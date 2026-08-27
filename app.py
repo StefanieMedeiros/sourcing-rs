@@ -36,7 +36,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- SEÇÃO 1: DADOS DA VAGA & ASSISTENTE ---
-st.subheader("📌 1. DADOS DA VAGA")
+st.subheader("1. DADOS DA VAGA")
 col1, col2 = st.columns(2)
 with col1:
     assistente = st.text_input("Nome do Assistente", placeholder="Ex: Sabrina Silva")
@@ -59,7 +59,7 @@ tipo_vaga = st.selectbox(
 st.write("---")
 
 # --- SEÇÃO 2: MÉTRICAS DE MAPPING / FUNIL DE CANDIDATOS ---
-st.subheader("📊 2. MÉTRICAS E FUNIL DE CANDIDATOS")
+st.subheader("2. MÉTRICAS E FUNIL DE CANDIDATOS")
 
 col3, col4 = st.columns(2)
 with col3:
@@ -75,7 +75,7 @@ with col4:
 observacoes = st.text_area("Observações / Desafios do Hunting (Opcional):", placeholder="Ex: Perfil com escassez no mercado...")
 
 # --- BOTÃO DE AÇÃO ---
-if st.button("💾 Salvar Indicadores na Base do BI", type="primary", use_container_width=True):
+if st.button("Salvar Informações", type="primary", use_container_width=True):
     if not assistente or not empresa or not cargo:
         st.warning("Por favor, preencha os campos obrigatórios: Assistente, Empresa e Cargo.")
     else:
@@ -83,10 +83,10 @@ if st.button("💾 Salvar Indicadores na Base do BI", type="primary", use_contai
             
             # IA Gemini gera uma análise automática da qualidade do hunting
             feedback_ia = ""
-            if "GEMINI_API_KEY" in st.secrets:
-                try:
+            try:
+                if "GEMINI_API_KEY" in st.secrets:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    model = genai.GenerativeModel('gemini-2.5-flash')
                     prompt = f"""
                     Atue como um Analista Sênior de R&S. Analise os dados do hunting abaixo:
                     - Vaga: {cargo} na empresa {empresa} ({tipo_vaga})
@@ -94,12 +94,12 @@ if st.button("💾 Salvar Indicadores na Base do BI", type="primary", use_contai
                     - Agendados: {agendados} | Entrevistados: {entrevistados} | Shortlist: {aprovados_shortlist} | Reprovações: {reprovacao_consultor}
                     - Observações: {observacoes}
 
-                    Forneça um diagnóstico de 2 a 3 frases destacando a eficiência da busca ou onde está o gargalo.
+                    Forneça um diagnóstico direto de 2 frases destacando a eficiência da busca ou onde está o gargalo.
                     """
                     response = model.generate_content(prompt)
                     feedback_ia = response.text
-                except Exception:
-                    feedback_ia = "Sem análise automática no momento."
+            except Exception as e:
+                feedback_ia = f"Análise indisponível: {e}"
 
             if feedback_ia:
                 st.info(f"💡 **Insight da IA sobre esta busca:**\n\n{feedback_ia}")
@@ -107,8 +107,7 @@ if st.button("💾 Salvar Indicadores na Base do BI", type="primary", use_contai
             # Gravação no Google Sheets
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
-                df_existente = conn.read()
-
+                
                 novo_registro = pd.DataFrame([{
                     "Data_Registro": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Assistente": assistente,
@@ -127,8 +126,10 @@ if st.button("💾 Salvar Indicadores na Base do BI", type="primary", use_contai
                     "Insight_IA": feedback_ia
                 }])
 
+                # Atualiza a planilha lendo e concatenando
+                df_existente = conn.read(ttl=0)
                 df_atualizado = pd.concat([df_existente, novo_registro], ignore_index=True)
                 conn.update(data=df_atualizado)
-                st.success("✅ Indicadores gravados com sucesso na sua planilha do BI!")
+                st.success("✅Informações salvas com sucesso!")
             except Exception as e:
-                st.error(f"Erro ao salvar na planilha: {e}")
+                st.error(f"Erro ao salvar os dados: {e}")
