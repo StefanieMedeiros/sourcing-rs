@@ -1,13 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
+import requests
 from datetime import datetime
 
-# Configuração da página e layout
 st.set_page_config(page_title="Registro de Sourcing R&S", layout="centered")
 
-# Visual estilo Card Escuro
 st.markdown("""
     <style>
     .header-card {
@@ -30,12 +27,11 @@ st.markdown("""
         <span class="badge">⚡ Registro de Sourcing R&S</span>
         <h2 style='color: white; margin-top: 10px; margin-bottom: 8px;'>Mapeamento e Indicadores de Vagas</h2>
         <p style='color: #b0a8c9; font-size: 14px;'>
-            Preencha os dados do levantamento para alimentar os indicadores de eficiência, conversão e qualidade no BI.
+            Preencha abaixo as informações.
         </p>
     </div>
 """, unsafe_allow_html=True)
 
-# --- SEÇÃO 1: DADOS DA VAGA & ASSISTENTE ---
 st.subheader("1. DADOS DA VAGA")
 col1, col2 = st.columns(2)
 with col1:
@@ -57,8 +53,6 @@ tipo_vaga = st.selectbox(
 )
 
 st.write("---")
-
-# --- SEÇÃO 2: MÉTRICAS DE MAPPING / FUNIL DE CANDIDATOS ---
 st.subheader("2. MÉTRICAS E FUNIL DE CANDIDATOS")
 
 col3, col4 = st.columns(2)
@@ -72,29 +66,25 @@ with col4:
     contratacoes = st.number_input("N° Contratações Realizadas", min_value=0, value=0)
     reprovacao_consultor = st.number_input("N° Reprovações do Consultor", min_value=0, value=0)
 
-observacoes = st.text_area("Observações / Desafios do Hunting (Opcional):", placeholder="Ex: Perfil com escassez no mercado...")
+observacoes = st.text_area("Observações / Desafios do Hunting (Opcional):")
 
-# --- BOTÃO DE AÇÃO ---
 if st.button("Salvar Informações", type="primary", use_container_width=True):
     if not assistente or not empresa or not cargo:
-        st.warning("Por favor, preencha os campos obrigatórios: Assistente, Empresa e Cargo.")
+        st.warning("Por favor, preencha os campos obrigatórios.")
     else:
-        with st.spinner("Analisando registros e atualizando base do BI..."):
-            
-            # IA Gemini gera uma análise automática da qualidade do hunting
+        with st.spinner("Processando..."):
             feedback_ia = ""
             try:
                 if "GEMINI_API_KEY" in st.secrets:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    model = genai.GenerativeModel('gemini-2.5-flash')
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     prompt = f"""
-                    Atue como um Analista Sênior de R&S. Analise os dados do hunting abaixo:
+                    Analise os dados do hunting:
                     - Vaga: {cargo} na empresa {empresa} ({tipo_vaga})
-                    - Retornos Efetivos: {retornos_efetivos}
-                    - Agendados: {agendados} | Entrevistados: {entrevistados} | Shortlist: {aprovados_shortlist} | Reprovações: {reprovacao_consultor}
+                    - Retornos: {retornos_efetivos} | Agendados: {agendados} | Entrevistados: {entrevistados} | Shortlist: {aprovados_shortlist} | Reprovações: {reprovacao_consultor}
                     - Observações: {observacoes}
 
-                    Forneça um diagnóstico direto de 2 frases destacando a eficiência da busca ou onde está o gargalo.
+                    Forneça um diagnóstico direto de 2 frases sobre a eficiência da busca.
                     """
                     response = model.generate_content(prompt)
                     feedback_ia = response.text
@@ -104,32 +94,31 @@ if st.button("Salvar Informações", type="primary", use_container_width=True):
             if feedback_ia:
                 st.info(f"💡 **Insight da IA sobre esta busca:**\n\n{feedback_ia}")
 
-            # Gravação no Google Sheets
-            try:
-                conn = st.connection("gsheets", type=GSheetsConnection)
-                
-                novo_registro = pd.DataFrame([{
-                    "Data_Registro": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Assistente": assistente,
-                    "Mês": mes,
-                    "RP": rp,
-                    "Empresa": empresa,
-                    "Cargo": cargo,
-                    "N_Vagas": n_vagas,
-                    "Tipo_Vaga": tipo_vaga,
-                    "Retornos_Efetivos": retornos_efetivos,
-                    "Agendados": agendados,
-                    "Entrevistados": entrevistados,
-                    "Aprovados_Shortlist": aprovados_shortlist,
-                    "Contratações": contratacoes,
-                    "Reprovações_Consultor": reprovacao_consultor,
-                    "Insight_IA": feedback_ia
-                }])
+            # Envio dos dados para a Planilha via Web App URL
+            payload = {
+                "Data_Registro": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "Assistente": assistente,
+                "Mês": mes,
+                "RP": rp,
+                "Empresa": empresa,
+                "Cargo": cargo,
+                "N_Vagas": n_vagas,
+                "Tipo_Vaga": tipo_vaga,
+                "Retornos_Efetivos": retornos_efetivos,
+                "Agendados": agendados,
+                "Entrevistados": entrevistados,
+                "Aprovados_Shortlist": aprovados_shortlist,
+                "Contratações": contratacoes,
+                "Reprovações_Consultor": reprovacao_consultor,
+                "Insight_IA": feedback_ia
+            }
 
-                # Atualiza a planilha lendo e concatenando
-                df_existente = conn.read(ttl=0)
-                df_atualizado = pd.concat([df_existente, novo_registro], ignore_index=True)
-                conn.update(data=df_atualizado)
-                st.success("✅Informações salvas com sucesso!")
+            try:
+                web_app_url = st.secrets["WEB_APP_URL"]
+                res = requests.post(web_app_url, json=payload)
+                if res.status_code == 200:
+                    st.success("Informações salvas com sucesso!")
+                else:
+                    st.error(f"Erro ao salvar: {res.status_code}")
             except Exception as e:
-                st.error(f"Erro ao salvar os dados: {e}")
+                st.error(f"Erro ao conectar com obanco de dados: {e}")
