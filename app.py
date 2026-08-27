@@ -27,7 +27,7 @@ st.markdown("""
         <span class="badge">⚡ Registro de Sourcing R&S</span>
         <h2 style='color: white; margin-top: 10px; margin-bottom: 8px;'>Mapeamento e Indicadores de Vagas</h2>
         <p style='color: #b0a8c9; font-size: 14px;'>
-            Preencha abaixo as informações.
+            Preencha os dados de mapeamento.
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -77,7 +77,8 @@ if st.button("Salvar Informações", type="primary", use_container_width=True):
             try:
                 if "GEMINI_API_KEY" in st.secrets:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    model = genai.GenerativeModel('gemini-2.0-flash')
+                    # Nome corrigido conforme sugestão da API
+                    model = genai.GenerativeModel('gemini-2.5-flash')
                     prompt = f"""
                     Analise os dados do hunting:
                     - Vaga: {cargo} na empresa {empresa} ({tipo_vaga})
@@ -94,7 +95,7 @@ if st.button("Salvar Informações", type="primary", use_container_width=True):
             if feedback_ia:
                 st.info(f"💡 **Insight da IA sobre esta busca:**\n\n{feedback_ia}")
 
-            # Envio dos dados para a Planilha via Web App URL
+            # Envio dos dados para a Planilha
             payload = {
                 "Data_Registro": datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "Assistente": assistente,
@@ -115,10 +116,11 @@ if st.button("Salvar Informações", type="primary", use_container_width=True):
 
             try:
                 web_app_url = st.secrets["WEB_APP_URL"]
-                res = requests.post(web_app_url, json=payload)
-                if res.status_code == 200:
-                    st.success("Informações salvas com sucesso!")
+                # Envio permitindo redirecionamento HTTP do Google
+                res = requests.post(web_app_url, json=payload, allow_redirects=True)
+                if res.status_code in [200, 302]:
+                    st.success("Dados salvos com sucesso!")
                 else:
-                    st.error(f"Erro ao salvar: {res.status_code}")
+                    st.error(f"Erro ao salvar na planilha (Código {res.status_code})")
             except Exception as e:
-                st.error(f"Erro ao conectar com obanco de dados: {e}")
+                st.error(f"Erro ao conectar com o banco de dados: {e}")
